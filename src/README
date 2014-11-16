@@ -1,0 +1,31 @@
+This file gives an overview of the files contained in this
+directory.
+
+The class sequential.Node describes the node of a list having a field
+item to store an integer and a field next to point to the next sequential.Node.
+
+The class sequential.SetList describes the implementation of a set as
+a list of Nodes with methods to:
+- add an integer to the list (if it is not already there),
+- remove an integer from the list (if it is there),
+- check for membership,
+- print the list on the screen.
+
+The class sequential.SeqTest performs a series of (random) tests  on
+the sequential.SetList data structure.
+Each test performs a sequence of insertions, membership-tests, and
+removals. The tests are executed --sequentially--. The nature of the
+tests is such that the final state of the data structure does
+not depend on the order in which the tests are executed.
+ 
+A `concurrent' implementation of the sequential.SetList data structure
+should allow the tests to run in parallel and to be interleaved 
+to some extent but the final result should still look like the 
+tests were executed in some sequential order.
+
+makeseq 
+By running ./makeseq you compile and run the tests.
+After that to re-run (without compiling) just type 
+java sequential.SeqTest
+
+----------------------------------------------------------------------
