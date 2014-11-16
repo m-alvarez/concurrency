@@ -8,10 +8,13 @@ package concurrent;
 */
 
 import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class SetList {
+import test.Set;
+
+public class SetList implements Set {
     private static final int NUM_TRIES = 1;
     private static final boolean DEBUG = false;
 
@@ -209,6 +212,22 @@ public class SetList {
             curr = curr.next;
         }
         System.out.println("");
+    }
+
+    /*
+      This function is not concurrency-proof (which is not required).
+     */
+    public List<Integer> asList()
+    {
+        ArrayList<Integer> l = new ArrayList<Integer>();
+
+        Node pred=head;
+        Node curr=head.next;
+        while (curr.next != null) {
+            l.add(curr.key);
+            curr=curr.next;
+        }
+        return l;
     }
 
     @Override
