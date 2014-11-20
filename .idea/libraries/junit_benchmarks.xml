@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="junit-benchmarks">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/junit-benchmarks.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

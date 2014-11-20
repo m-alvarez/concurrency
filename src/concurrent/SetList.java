@@ -7,7 +7,6 @@ package concurrent;
     to be greater than MIN_VALUE and smaller than MAX_VALUE.
 */
 
-import java.util.LinkedList;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -15,8 +14,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import test.Set;
 
 public class SetList implements Set {
-    private static final int NUM_TRIES = 1;
-    private static final boolean DEBUG = false;
 
     /* As per TL2, we require the version of each SetList instance */
     private final AtomicInteger version = new AtomicInteger(0);
@@ -37,13 +34,13 @@ public class SetList implements Set {
         transaction:
         while (true) {
             int rv = this.version.get();
-            VL vl, vl1;
-            List<Node> readSet = new LinkedList<Node>();
+            int vl, vl1;
+            Node readSet;
 
             Node pred = head;
 
             vl = head.versionedLock.get();
-            if (vl.version > rv || vl.locked) {
+            if (VL.getVersion(vl) > rv || VL.isLocked(vl)) {
                 continue transaction;
             }
             Node curr = head.next;
@@ -51,65 +48,51 @@ public class SetList implements Set {
             if (vl1 != vl) {
                 continue transaction;
             }
-            readSet.add(head);
 
-            //Utils.report("Searching place");
+            readSet = head;
+
             while (curr.key < item) {
                 pred = curr;
 
                 vl = pred.versionedLock.get();
-                if (vl.version > rv || vl.locked) {
-                    /*
-                    if (vl.locked) {
-                        Utils.report("Node " + pred.key + " Locked. Restarting.");
-                    } else {
-                        Utils.report("New. Restarting.");
-                    } */
+                if (VL.getVersion(vl) > rv || VL.isLocked(vl)) {
                     continue transaction;
                 }
+
                 curr = pred.next;
                 vl1 = pred.versionedLock.get();
                 if (vl1 != vl) {
                     continue transaction;
                 }
-                /* TODO if removal breaks something, it's this */
-                readSet.add(0, pred);
-                if (readSet.size() > 1) readSet.remove(1);
+                readSet = pred;
             }
             if (curr.key == item) {
-                /* TODO should we re-check the read-set? I don't think so */
                 return false;
             } else {
                 Node node = new Node(item);
                 node.next = curr;
 
                 /* TODO we could try to acquire the lock more than once... */
-                //Utils.report("Trying to acquire lock for node " + pred.key);
                 if (!pred.lock()) {
-                    //Utils.report("Failed to acquire lock");
                     continue transaction;
                 }
 
                 int wv = this.version.incrementAndGet();
                 if (rv + 1 != wv) {
-                    for (Node n : readSet) {
-                        vl = n.versionedLock.get();
-                        if ((n != pred && vl.locked) || vl.version > rv) {
-                            /*
-                                TODO Perhaps we should decrement the global version
-                                Because no change has taken place. This doesn't change
-                                the semantics, but makes less transactions fail
-                            */
-                            pred.unlock();
-                            continue transaction;
-                        }
+                    vl = readSet.versionedLock.get();
+                    if ((readSet != pred && VL.isLocked(vl)) || VL.getVersion(vl) > rv) {
+                        /*
+                            TODO Perhaps we should decrement the global version
+                            Because no change has taken place. This doesn't change
+                            the semantics, but makes less transactions fail
+                        */
+                        pred.unlock();
+                        continue transaction;
                     }
                 }
-                //Utils.report("Started writing " + pred.key);
                 pred.next = node;
                 pred.updateToVersion(wv);
                 pred.unlock();
-                //Utils.report("Unlocked " + pred.key);
                 return true;
             }
         }
@@ -119,13 +102,13 @@ public class SetList implements Set {
         transaction:
         while (true) {
             int rv = this.version.get();
-            VL vl, vl1;
-            List<Node> readSet = new LinkedList<Node>();
+            int vl, vl1;
+            Node readSet;
 
             Node pred = head;
 
             vl = head.versionedLock.get();
-            if (vl.version > rv || vl.locked) {
+            if (VL.getVersion(vl) > rv || VL.isLocked(vl)) {
                 continue transaction;
             }
             Node curr = head.next;
@@ -133,13 +116,13 @@ public class SetList implements Set {
             if (vl1 != vl) {
                 continue transaction;
             }
-            readSet.add(head);
+            readSet = head;
 
             while (curr.key < item) {
                 pred = curr;
 
                 vl = pred.versionedLock.get();
-                if (vl.version > rv || vl.locked) {
+                if (VL.getVersion(vl) > rv || VL.isLocked(vl)) {
                     continue transaction;
                 }
                 curr = pred.next;
@@ -147,26 +130,24 @@ public class SetList implements Set {
                 if (vl1 != vl) {
                     continue transaction;
                 }
-                readSet.add(0, pred);
-                /* TODO check this */
-                if (readSet.size() > 1) readSet.remove(1);
+
+                readSet = pred;
             }
             if (curr.key == item) {
                 if (!pred.lock()) continue transaction;
                 if (!curr.lock()) {
-                    pred.unlock(); continue transaction;
+                    pred.unlock();
+                    continue transaction;
                 }
 
                 int wv = this.version.incrementAndGet();
                 if (rv + 1 != wv) {
-                    for (Node n : readSet) {
-                        vl = n.versionedLock.get();
-                        if ((n != pred && n != curr && vl.locked)
-                                || vl.version > rv) {
-                            curr.unlock();
-                            pred.unlock();
-                            continue transaction;
-                        }
+                    vl = readSet.versionedLock.get();
+                    if ((readSet != pred && readSet != curr && VL.isLocked(vl))
+                            || VL.getVersion(vl) > rv) {
+                        curr.unlock();
+                        pred.unlock();
+                        continue transaction;
                     }
                 }
 
@@ -178,14 +159,12 @@ public class SetList implements Set {
 
                 return true;
             } else {
-                /* TODO should we re-check the read-set? */
                 return false;
             }
         }
     }
 
     public boolean member(int item) {
-        /* TODO does this need synchronization? */
         Node pred = head;
         Node curr = head.next;
         while (curr.key < item) {
@@ -199,10 +178,10 @@ public class SetList implements Set {
         }
     }
 
-    /*
-        The function print has side-effects. Therefore
-        it's impossible to write it in a transactional
-        style. For transactional printing use toString
+    /**
+     * The function print has side-effects. Therefore
+     * it's impossible to write it in a transactional
+     * style.
      */
     public void print() {
         Node pred = head;
@@ -214,25 +193,18 @@ public class SetList implements Set {
         System.out.println("");
     }
 
-    /*
-      This function is not concurrency-proof (which is not required).
+    /**
+     * This function is not thread-safe (which is not required).
      */
-    public List<Integer> asList()
-    {
+    public List<Integer> asList() {
         ArrayList<Integer> l = new ArrayList<Integer>();
 
-        Node pred=head;
-        Node curr=head.next;
+        Node pred = head;
+        Node curr = head.next;
         while (curr.next != null) {
             l.add(curr.key);
-            curr=curr.next;
+            curr = curr.next;
         }
         return l;
-    }
-
-    @Override
-    public String toString() {
-        /* TODO */
-        return "";
     }
 }

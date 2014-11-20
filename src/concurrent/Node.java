@@ -1,12 +1,12 @@
 package concurrent;
 /* The node of an integer list. At creation, default pointer is null */
 
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Node {
 
-    public final AtomicReference<VL> versionedLock =
-            new AtomicReference<VL>(new VL(0, false));
+    public final AtomicInteger versionedLock = new AtomicInteger(VL.make(false, 0));
+
     public final int key;
     public Node next = null;
 
@@ -15,19 +15,20 @@ public class Node {
     }
 
     public void updateToVersion(int version) {
-        this.versionedLock.set(new VL(version, true));
+        int vl = this.versionedLock.get();
+        this.versionedLock.set(VL.setVersion(vl, version));
     }
 
     public boolean lock() {
-        VL vl = this.versionedLock.get();
-        if (vl.locked) { return false; }
-        VL lockedVL = new VL(vl.version, true);
+        int vl = this.versionedLock.get();
+        if (VL.isLocked(vl)) { return false; }
+        int lockedVL = VL.setLocked(vl, true);
         return this.versionedLock.compareAndSet(vl, lockedVL);
     }
 
     public synchronized void unlock() {
-        int version = this.versionedLock.get().version;
-        this.versionedLock.set(new VL(version, false));
+        int vl = this.versionedLock.get();
+        this.versionedLock.set(VL.setLocked(vl, false));
     }
 }
 
