@@ -5,14 +5,15 @@
 
 package test;
 
-import static org.junit.Assert.fail;
-import static org.junit.Assert.assertEquals;
-
 import com.carrotsearch.junitbenchmarks.BenchmarkOptions;
-import org.junit.Test;
-import org.junit.Rule;
-import org.junit.rules.TestRule;
 import com.carrotsearch.junitbenchmarks.BenchmarkRule;
+import com.carrotsearch.junitbenchmarks.annotation.AxisRange;
+import com.carrotsearch.junitbenchmarks.annotation.BenchmarkHistoryChart;
+import com.carrotsearch.junitbenchmarks.annotation.BenchmarkMethodChart;
+import com.carrotsearch.junitbenchmarks.annotation.LabelType;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TestRule;
 import org.junit.runner.JUnitCore;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -20,32 +21,17 @@ import org.junit.runners.Parameterized.Parameters;
 
 import java.util.*;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
+
 @RunWith(Parameterized.class)
-@BenchmarkOptions(benchmarkRounds = 3, warmupRounds = 1)
-public class SetTest {
+@BenchmarkOptions()
+@AxisRange(min = 0, max = 1)
+@BenchmarkMethodChart(filePrefix = "benchmarks")
+@BenchmarkHistoryChart(labelWith = LabelType.CUSTOM_KEY)
+public class Benchmarks {
     @Rule
     public TestRule benchmarkRun = new BenchmarkRule();
-
-    /**
-     * Number of test steps for each test (sequential and concurrent).
-     * In the sequential test, the steps are executed sequentially.
-     * In the concurrent test, the steps are executed in parallel.
-     */
-    private static final int NUM_STEPS = 10000;
-
-    /**
-     * Number of cores. Some versions of this file use this number to
-     * determine the number of threads to run.
-     */
-    private static final int NUM_CORES = Runtime.getRuntime().availableProcessors();
-    /* IMPORTANT NUM_STEPS must be divisible by NUM_THREADS */
-    private static final int NUM_THREADS = 4;
-    private static final int STEPS_PER_THREAD = NUM_STEPS / NUM_THREADS;
-
-    /**
-     * Upper bound on integers that are used in test
-     */
-    private static final int m = 10000 ;
 
     /**
      * A set factory instance provides concrete objects that implement
@@ -60,38 +46,40 @@ public class SetTest {
      */
     private String configuration_;
 
-    /**
-     * A set factory that will provide the Set objects used for the
-     * tests.
-     */
-    private SetFactory setFact_;
-    private List<Integer> testData_;
-    private List<Integer> expectedRes_;
+    private static final int NUM_STEPS = 10000;
+    private static final int BOUND = 10000;
+    private final SetFactory setFact_;
+    private final List<Integer> testData_;
+    /* IMPORTANT NUM_STEPS must be divisible by NUM_THREADS */
+    private final int NUM_THREADS;
+    private final int STEPS_PER_THREAD;
+    private final int SLOWDOWN;
 
-    public SetTest(String configuration, SetFactory setFact,
-                   List<Integer> testData, List<Integer> expectedRes) {
+    public Benchmarks(String configuration, SetFactory setFact,
+                      List<Integer> testData, int numThreads, int slowdown) {
         configuration_ = configuration;
         setFact_ = setFact;
         testData_ = testData;
-        expectedRes_ = expectedRes;
+        NUM_THREADS = numThreads;
+        assert (NUM_STEPS % NUM_THREADS == 0);
+        STEPS_PER_THREAD = NUM_STEPS / NUM_THREADS;
+        SLOWDOWN = slowdown;
     }
 
     public void testStep(Set set, int a) {
-        // add multiples <= m
-        for (int h = 1; h * a <= m; ++h) {
+        for (int h = 1; h * a <= BOUND; ++h) {
             set.add(h * a);
         }
 
-        // remove proper multiples <=m
-        for (int k = 2; k * a <= m; ++k) {
+        for (int k = 2; k * a <= BOUND; ++k) {
             if (set.member(k * a)) {
                 set.remove(k * a);
             }
-        } //NB we only remove non-primes
+        }
 
         if (!isPrime(a)) {
             set.remove(a);
-        } // remove a if not prime
+        }
     }
 
     @Test
@@ -101,8 +89,17 @@ public class SetTest {
 
         Runnable code = new Runnable() {
             public void run() {
+                int i = 0;
                 for (Integer k : testData) {
-                    testStep(set, k);
+                    try {
+                        if (i % 5 == 0) {
+                            Thread.sleep(0, SLOWDOWN);
+                        }
+                        testStep(set, k);
+                        i++;
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException("Thread interrupted");
+                    }
                 }
             }
         };
@@ -111,7 +108,6 @@ public class SetTest {
         thread.start();
         try {
             thread.join();
-            assertEquals(configuration_, expectedRes_, set.asList());
         } catch (InterruptedException e) {
             fail(configuration_ + ": a thread was interrupted");
         }
@@ -126,8 +122,17 @@ public class SetTest {
             final List<Integer> section = testData_.subList(i * STEPS_PER_THREAD, (i + 1) * STEPS_PER_THREAD);
             Runnable code = new Runnable() {
                 public void run() {
-                    for (Integer i : section) {
-                        testStep(set, i);
+                    int i = 0;
+                    for (Integer k : section) {
+                        try {
+                            if (i % 5 == 0) {
+                                Thread.sleep(0, SLOWDOWN);
+                            }
+                            testStep(set, k);
+                            i++;
+                        } catch (InterruptedException e) {
+                            throw new RuntimeException("Thread interrupted");
+                        }
                     }
                 }
             };
@@ -140,7 +145,6 @@ public class SetTest {
             for (Thread t : threads) {
                 t.join();
             }
-            assertEquals(configuration_, expectedRes_, set.asList());
         } catch (InterruptedException e) {
             fail(configuration_ + ": a thread was interrupted");
         }
@@ -155,23 +159,6 @@ public class SetTest {
         return true;
     }
 
-    public static List<Integer> expectedResult(List<Integer> testData) {
-        SortedSet<Integer> set = new TreeSet<Integer>();
-        for (int i = 0; i < NUM_STEPS; ++i) {
-            if (isPrime(testData.get(i))) {
-                set.add(testData.get(i));
-            }
-        }
-
-        List<Integer> l = new ArrayList<Integer>(set.size());
-
-        for (int elt : set) {
-            l.add(elt);
-        }
-
-        return l;
-    }
-
     @Parameters
     public static Collection<Object[]> data() {
         // We want to perform the same tests on a sequential.SetList
@@ -180,13 +167,11 @@ public class SetTest {
         List<Integer> testData = new ArrayList<Integer>(NUM_STEPS);
 
         {
-            Random g = new Random();
+            Random g = new Random(0);
             for (int i = 0; i < NUM_STEPS; ++i) {
-                testData.add(2 + g.nextInt(m - 1));
+                testData.add(2 + g.nextInt(BOUND - 1));
             }  // generates n random numbers in [2,m]]
         }
-
-        List<Integer> expectedRes = expectedResult(testData);
 
         SetFactory setListFactory = new SetFactory() {
             public Set getInstance() {
@@ -200,14 +185,35 @@ public class SetTest {
             }
         };
 
-        return Arrays.asList(new Object[][]{
-                {"Using sequential SetList factory", setListFactory, testData, expectedRes},
-                {"Using concurrent SetList factory", concurrentSetListFactory, testData, expectedRes}
+        List<Object[]> arguments = new ArrayList<Object[]>();
+
+        /*
+        for (int slowdown : new int[]{0, 1}) {
+            for (int numThreads : new int[]{1, 2, 4, 8}) { */
+        String params = String.format(" threads %d slowdown %d", numThreads, slowdown);
+        arguments.add(new Object[]{
+                "synchronized" + params, setListFactory, testData, numThreads, slowdown
         });
+        arguments.add(new Object[]{
+                "transactional" + params, concurrentSetListFactory, testData, numThreads, slowdown
+        });
+        /*}
+        }*/
+        return arguments;
     }
+
+    private static int numThreads, slowdown;
 
     /* Main method so we can create stand-alone jars */
     public static void main(String[] args) throws Exception {
-        JUnitCore.main("test.SetTest");
+        System.setProperty("jub.consumers", "CONSOLE,H2,XML");
+        System.setProperty("jub.db.file", ".benchmarks");
+        System.setProperty("jub.xml.file", "results");
+
+        Benchmarks.numThreads = Integer.parseInt(args[0]);
+        Benchmarks.slowdown = Integer.parseInt(args[1]);
+        String name = String.format("Threads %d slowdown %d", numThreads, slowdown);
+        System.setProperty("jub.customkey", name);
+        JUnitCore.main("test.Benchmarks");
     }
 }

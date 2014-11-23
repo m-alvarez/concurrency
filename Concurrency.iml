@@ -19,5 +19,6 @@
       </library>
     </orderEntry>
     <orderEntry type="library" name="junit-benchmarks" level="project" />
+    <orderEntry type="library" name="h2" level="application" />
   </component>
 </module>

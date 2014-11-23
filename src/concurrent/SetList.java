@@ -72,7 +72,6 @@ public class SetList implements Set {
                 Node node = new Node(item);
                 node.next = curr;
 
-                /* TODO we could try to acquire the lock more than once... */
                 if (!pred.lock()) {
                     continue transaction;
                 }
@@ -81,11 +80,6 @@ public class SetList implements Set {
                 if (rv + 1 != wv) {
                     vl = readSet.versionedLock.get();
                     if ((readSet != pred && VL.isLocked(vl)) || VL.getVersion(vl) > rv) {
-                        /*
-                            TODO Perhaps we should decrement the global version
-                            Because no change has taken place. This doesn't change
-                            the semantics, but makes less transactions fail
-                        */
                         pred.unlock();
                         continue transaction;
                     }
